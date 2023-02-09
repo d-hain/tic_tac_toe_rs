@@ -5,4 +5,5 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
+anyhow = "1.0.69"
 sdl2 = "0.35.2"
