@@ -1,15 +1,15 @@
 #![warn(clippy::unwrap_used)]
 
-use anyhow::{Result, Ok, anyhow, Context};
+use anyhow::{Result, Ok, Context};
 use std::time::Duration;
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::EventPump;
 use sdl2::rect::Rect;
-use sdl2::render::{Texture, TextureCreator, TextureValueError, WindowCanvas};
+use sdl2::render::{Texture, TextureCreator, WindowCanvas};
 use sdl2::ttf::Font;
-use sdl2::ttf::{FontStyle, Sdl2TtfContext};
+use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::WindowContext;
 
 /// [`Sign`] to represent the players.
@@ -51,27 +51,36 @@ impl Field {
         let window_size = canvas.window().size();
         let cell_size = window_size.0 / 5;
         let padding = cell_size / 4;
+        let field_size = cell_size * self.0.len() as u32 + padding * (self.0.len() as u32 - 1);
+        let remaining_window_width = (window_size.0 - field_size) as i32;
+        let remaining_window_height = (window_size.0 - field_size) as i32;
 
         for (row_idx, row) in self.0.iter().enumerate() {
+            let row_idx = row_idx as u32;
             for (col_idx, cell) in row.iter().enumerate() {
-                // Display Sign
+                let col_idx = col_idx as u32;
+                
+                // Draw Cell
+                let cell_x_pos = remaining_window_width / 2 + (cell_size * col_idx + padding * col_idx) as i32;
+                let cell_y_pos = remaining_window_height / 2 + (cell_size * row_idx + padding * row_idx) as i32;
+                canvas.set_draw_color(Color::RGB(200, 0, 255));
+                canvas.fill_rect(Rect::new(
+                    cell_x_pos,
+                    cell_y_pos,
+                    cell_size,
+                    cell_size,
+                )).expect("Possibly graphic driver failure!");
+                canvas.set_draw_color(BACKGROUND_COLOR);
+
+                // Draw Sign
                 let texture_creator = canvas.texture_creator();
                 let sign_text = match cell.0 {
                     Some(sign) => sign.into(),
                     None => " ",
                 };
                 let sign_texture = get_text_texture(sign_text, font, &texture_creator).context("Creating texture for player Sign")?;
-                let target = Rect::new(0, 0, 200, 200);
+                let target = Rect::new(cell_x_pos, cell_y_pos, cell_size, cell_size);
                 canvas.copy(&sign_texture, None, Some(target)).expect("Displaying texture for player Sign"); //TODO: Really do not want to use expect here
-
-                canvas.set_draw_color(Color::RGB(200, 0, 255));
-                canvas.fill_rect(Rect::new(
-                    (cell_size * col_idx as u32 + padding * col_idx as u32) as i32,
-                    (cell_size * row_idx as u32 + padding * row_idx as u32) as i32,
-                    cell_size,
-                    cell_size,
-                )).expect("Possibly graphic driver failure!");
-                canvas.set_draw_color(BACKGROUND_COLOR);
             }
         }
 
@@ -90,12 +99,11 @@ fn main() {
     let (mut canvas, mut event_pump, ttf_context) = setup_sdl();
 
     // Setup GameState
-    let font = ttf_context.load_font("assets/ComicSansMS3.ttf", 28).expect("Loading font");
+    let font = ttf_context.load_font("assets/ComicSansMS3.ttf", 69).expect("Loading font");
     let mut game_state = GameState {
         font,
         field: Field::empty(3),
     };
-    game_state.field.0[0][0] = Cell(Some(Sign::X)); // TODO: temp
 
     // Game Loop
     'running: loop {
@@ -104,7 +112,8 @@ fn main() {
                 Event::Quit { .. } |
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                     break 'running;
-                }
+                },
+                Event::MouseButtonDown { y, x, .. } => on_mouse_clicked(x, y),
                 _ => {}
             }
         }
@@ -145,6 +154,11 @@ fn setup_sdl() -> (WindowCanvas, EventPump, Sdl2TtfContext) {
     let event_pump = sdl_context.event_pump().expect("Getting Event Dump");
 
     (canvas, event_pump, ttf_context)
+}
+
+/// Handles what happens when the mouse is clicked
+fn on_mouse_clicked(x_pos: i32, y_pos: i32) {
+    // TODO: change cell sign
 }
 
 fn get_text_texture<'a>(
