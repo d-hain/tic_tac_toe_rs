@@ -6,4 +6,5 @@ build = "build.rs"
 
 [dependencies]
 anyhow = "1.0.69"
+rand = "0.8.5"
 sdl2 = { version = "0.35.2", features = ["ttf"] }
