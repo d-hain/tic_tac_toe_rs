@@ -108,14 +108,21 @@ impl Field {
                     Some(sign) => sign.into(),
                     None => " ",
                 };
-                let sign_texture = get_text_texture(sign_text, &game_state.font, &texture_creator).context("Creating texture for player Sign")?;
+                let sign_texture = get_text_texture(sign_text, &game_state.font, &texture_creator).context("Creating texture for player Sign.")?;
                 let target = Rect::new(cell_x_pos, cell_y_pos, cell_size, cell_size);
-                canvas.copy(&sign_texture, None, Some(target)).expect("Displaying texture for player Sign"); //TODO: Really do not want to use expect here
+                canvas.copy(&sign_texture, None, Some(target)).expect("Displaying texture for player Sign."); //TODO: Really do not want to use expect here
             }
         }
 
         Ok(())
     }
+}
+
+/// How the game has ended.
+enum GameResult {
+    /// The Sign is what player has won.
+    Win(Sign),
+    Tie,
 }
 
 struct GameState<'a> {
@@ -124,6 +131,7 @@ struct GameState<'a> {
     /// The actual [`Rect`]s on screen
     field_rects: Vec<Vec<Rect>>,
     current_player: Sign,
+    game_result: Option<GameResult>,
 }
 
 const BACKGROUND_COLOR: Color = Color::RGB(69, 69, 69);
@@ -145,6 +153,7 @@ fn main() {
         field: Field::empty(3),
         field_rects: Vec::new(),
         current_player,
+        game_result: None,
     };
 
     // Game Loop
@@ -171,7 +180,15 @@ fn update(canvas: &mut WindowCanvas, game_state: &mut GameState) -> Result<()> {
     let field = game_state.field.clone();
 
     field.draw(game_state, canvas).context("Drawing game Field")?;
-
+    
+    if check_draw(&game_state.field) {
+        game_state.game_result = Some(GameResult::Tie);
+    }
+    
+    if let Some(game_result) = &game_state.game_result {
+        draw_end_text(game_result, &game_state.font, canvas)?;
+    }
+    
     canvas.present();
     std::thread::sleep(Duration::new(0, 1_000_000_000_u32 / 60));
 
@@ -200,8 +217,35 @@ fn setup_sdl() -> (WindowCanvas, EventPump, Sdl2TtfContext) {
     (canvas, event_pump, ttf_context)
 }
 
+fn check_draw(field: &Field) -> bool {
+    todo!() // TODO: Do it, JUST DO IT
+}
+
+/// Draws the text at the end of the game, when the game ends in a tie, win or lose
+fn draw_end_text(game_result: &GameResult, font: &Font, canvas: &mut WindowCanvas) -> Result<()>{
+    let texture_creator = canvas.texture_creator();
+    let window_size = canvas.window().size();
+    
+    let text = match game_result {
+        GameResult::Win(sign) => match sign {
+            Sign::X => "Player X wins!",
+            Sign::O => "Player O wins!",
+        },
+        GameResult::Tie => "It is a tie!",
+    };
+    let texture = get_text_texture(text, font, &texture_creator).context("Creating texture for player Sign.")?;
+    
+    let text_width = window_size.0 / 5;
+    let text_height = window_size.1 / 8;
+    let text_x_pos = window_size.0 / 2 - text_width / 2;
+    let text_y_pos = window_size.1 / 2 - text_height / 2;
+    let target = Rect::new(text_x_pos as i32, text_y_pos as i32, text_width, text_height);
+    canvas.copy(&texture, None, Some(target)).expect("Displaying texture for ending text."); //TODO: Really do not want to use expect here
+    
+    Ok(())
+}
+
 /// Handles what happens when the mouse is clicked.
-#[allow(clippy::ptr_arg)]
 fn on_mouse_clicked(x_pos: i32, y_pos: i32, game_state: &mut GameState) {
     let clicked_point = Point::new(x_pos, y_pos);
 
