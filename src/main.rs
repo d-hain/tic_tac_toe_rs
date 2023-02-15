@@ -16,7 +16,7 @@ use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::WindowContext;
 
 /// [`Sign`] to represent the players.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 enum Sign {
     X,
     O,
@@ -135,6 +135,7 @@ struct GameState<'a> {
 }
 
 const BACKGROUND_COLOR: Color = Color::RGB(69, 69, 69);
+const FIELD_SIZE: usize = 3;
 
 fn main() {
     let (mut canvas, mut event_pump, ttf_context) = setup_sdl();
@@ -143,14 +144,14 @@ fn main() {
     let font = ttf_context.load_font("assets/ComicSansMS3.ttf", 69).expect("Loading font");
     // Get random starting player
     let current_player = rand::thread_rng().gen_range(0_u32..=1_u32);
-    let current_player = match current_player { 
+    let current_player = match current_player {
         0 => Sign::O,
         1 => Sign::X,
         _ => panic!("The rand crate broke or I am stupid.")
     };
     let mut game_state = GameState {
         font,
-        field: Field::empty(3),
+        field: Field::empty(FIELD_SIZE),
         field_rects: Vec::new(),
         current_player,
         game_result: None,
@@ -180,15 +181,15 @@ fn update(canvas: &mut WindowCanvas, game_state: &mut GameState) -> Result<()> {
     let field = game_state.field.clone();
 
     field.draw(game_state, canvas).context("Drawing game Field")?;
-    
+
     if check_draw(&game_state.field) {
         game_state.game_result = Some(GameResult::Tie);
     }
-    
+
     if let Some(game_result) = &game_state.game_result {
         draw_end_text(game_result, &game_state.font, canvas)?;
     }
-    
+
     canvas.present();
     std::thread::sleep(Duration::new(0, 1_000_000_000_u32 / 60));
 
@@ -217,15 +218,24 @@ fn setup_sdl() -> (WindowCanvas, EventPump, Sdl2TtfContext) {
     (canvas, event_pump, ttf_context)
 }
 
+/// Checks if the game has ended in a draw
 fn check_draw(field: &Field) -> bool {
-    todo!() // TODO: Do it, JUST DO IT
+    for row in field.0.iter() {
+        for cell in row {
+            if cell.0.is_none() {
+                return false
+            }
+        }
+    }
+
+    true
 }
 
 /// Draws the text at the end of the game, when the game ends in a tie, win or lose
-fn draw_end_text(game_result: &GameResult, font: &Font, canvas: &mut WindowCanvas) -> Result<()>{
+fn draw_end_text(game_result: &GameResult, font: &Font, canvas: &mut WindowCanvas) -> Result<()> {
     let texture_creator = canvas.texture_creator();
     let window_size = canvas.window().size();
-    
+
     let text = match game_result {
         GameResult::Win(sign) => match sign {
             Sign::X => "Player X wins!",
@@ -234,14 +244,14 @@ fn draw_end_text(game_result: &GameResult, font: &Font, canvas: &mut WindowCanva
         GameResult::Tie => "It is a tie!",
     };
     let texture = get_text_texture(text, font, &texture_creator).context("Creating texture for player Sign.")?;
-    
+
     let text_width = window_size.0 / 5;
     let text_height = window_size.1 / 8;
     let text_x_pos = window_size.0 / 2 - text_width / 2;
-    let text_y_pos = window_size.1 / 2 - text_height / 2;
+    let text_y_pos = window_size.1 / 42;
     let target = Rect::new(text_x_pos as i32, text_y_pos as i32, text_width, text_height);
     canvas.copy(&texture, None, Some(target)).expect("Displaying texture for ending text."); //TODO: Really do not want to use expect here
-    
+
     Ok(())
 }
 
