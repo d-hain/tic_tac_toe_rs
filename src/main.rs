@@ -2,7 +2,6 @@
 
 use std::ops::{Not};
 use anyhow::{Result, Ok, Context};
-use std::time::Duration;
 use std::vec;
 use rand::Rng;
 use sdl2::pixels::Color;
@@ -43,11 +42,13 @@ impl Not for Sign {
 }
 
 /// Represents a [`Cell`] of a [`Field`].
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct Cell(Option<Sign>);
 
 impl Cell {
-    /// Returns true if the [`Cell`] is [`None`].
+    /// # Returns 
+    /// 
+    /// true if the [`Cell`] is [`None`].
     fn is_empty(&self) -> bool {
         self.0.is_none()
     }
@@ -68,20 +69,34 @@ impl Field {
             row_vec
         }).collect::<Vec<Vec<Cell>>>())
     }
+    
+    /// # Returns
+    /// 
+    /// the row count of the [`Field`].
+    fn row_count(&self) -> usize {
+        self.0.len()
+    }
+
+    /// # Returns
+    ///
+    /// the column count of the [`Field`].
+    fn column_count(&self) -> usize {
+        self.0[0].len()
+    }
 
     /// Draw the [`Field`] to the given `canvas`.
     fn draw(&self, game_state: &mut GameState, canvas: &mut WindowCanvas) -> Result<()> {
         let window_size = canvas.window().size();
         let cell_size = window_size.0 / 5;
         let padding = cell_size / 4;
-        let field_size = cell_size * self.0.len() as u32 + padding * (self.0.len() as u32 - 1);
+        let field_size = cell_size * self.row_count() as u32 + padding * (self.row_count() as u32 - 1);
         let remaining_window_width = (window_size.0 - field_size) as i32;
         let remaining_window_height = (window_size.0 - field_size) as i32;
         let texture_creator = canvas.texture_creator();
 
         // Fill field_rects with "empty" rects (not a nice solution but it works
         if game_state.field_rects.is_empty() {
-            game_state.field_rects = vec![vec![Rect::new(0, 0, 0, 0); self.0[0].len()]; self.0.len()];
+            game_state.field_rects = vec![vec![Rect::new(0, 0, 0, 0); self.column_count()]; self.row_count()];
         }
 
         for (row_idx, row) in self.0.iter().enumerate() {
@@ -118,20 +133,12 @@ impl Field {
     }
 }
 
-/// How the game has ended.
-enum GameResult {
-    /// The Sign is what player has won.
-    Win(Sign),
-    Tie,
-}
-
 struct GameState<'a> {
     font: Font<'a, 'a>,
     field: Field,
     /// The actual [`Rect`]s on screen
     field_rects: Vec<Vec<Rect>>,
     current_player: Sign,
-    game_result: Option<GameResult>,
 }
 
 const BACKGROUND_COLOR: Color = Color::RGB(69, 69, 69);
@@ -154,7 +161,6 @@ fn main() {
         field: Field::empty(FIELD_SIZE),
         field_rects: Vec::new(),
         current_player,
-        game_result: None,
     };
 
     // Game Loop
@@ -174,29 +180,31 @@ fn main() {
     }
 }
 
-/// Updates the game and draws to the window
+/// Updates the game and draws to the window.
 fn update(canvas: &mut WindowCanvas, game_state: &mut GameState) -> Result<()> {
     canvas.clear();
-
     let field = game_state.field.clone();
+    let texture_creator = canvas.texture_creator();
 
     field.draw(game_state, canvas).context("Drawing game Field")?;
 
-    if check_draw(&game_state.field) {
-        game_state.game_result = Some(GameResult::Tie);
-    }
+    // Check for win or draw
+    if check_win(&game_state.field, &game_state.current_player) {
+        let mut text = "Player ".to_owned();
+        text.push_str(game_state.current_player.into());
+        text.push_str(" has won!");
 
-    if let Some(game_result) = &game_state.game_result {
-        draw_end_text(game_result, &game_state.font, canvas)?;
+        draw_end_text(&*text, &game_state.font, &texture_creator, canvas)?;
+    } else if check_draw(&game_state.field) {
+        draw_end_text("It is a tie!", &game_state.font, &texture_creator, canvas)?;
     }
 
     canvas.present();
-    std::thread::sleep(Duration::new(0, 1_000_000_000_u32 / 60));
 
     Ok(())
 }
 
-/// Setup everything that has to do with SDL2
+/// Setup everything that has to do with SDL2.
 fn setup_sdl() -> (WindowCanvas, EventPump, Sdl2TtfContext) {
     let sdl_context = sdl2::init().expect("Initializing SDL2");
     let video_subsystem = sdl_context.video().expect("Initializing Video Subsystem");
@@ -218,12 +226,33 @@ fn setup_sdl() -> (WindowCanvas, EventPump, Sdl2TtfContext) {
     (canvas, event_pump, ttf_context)
 }
 
-/// Checks if the game has ended in a draw
+/// Checks if the game has ended in a win for the given `player`.
+fn check_win(field: &Field, player: &Sign) -> bool {
+    let mut field = field.clone();
+
+    // Rows
+    if check_win_row(&field, player) {
+        return true;
+    }
+
+    // Cols
+    rotate_field_90deg(&mut field);
+    if check_win_row(&field, player) {
+        return true;
+    }
+    
+    // Diagonals
+    
+
+    false
+}
+
+/// Checks if the game has ended in a draw.
 fn check_draw(field: &Field) -> bool {
     for row in field.0.iter() {
         for cell in row {
             if cell.0.is_none() {
-                return false
+                return false;
             }
         }
     }
@@ -231,19 +260,38 @@ fn check_draw(field: &Field) -> bool {
     true
 }
 
-/// Draws the text at the end of the game, when the game ends in a tie, win or lose
-fn draw_end_text(game_result: &GameResult, font: &Font, canvas: &mut WindowCanvas) -> Result<()> {
-    let texture_creator = canvas.texture_creator();
+/// Checks if the `field` contains a row with three of the same [`Sign`]s.
+fn check_win_row(field: &Field, player: &Sign) -> bool {
+    if field.0
+        .windows(FIELD_SIZE)
+        .any(|row| row.contains(&vec![Cell(Some(*player)); FIELD_SIZE])) {
+        return true;
+    }
+    
+    false
+}
+
+/// Rotates the field by 90 degrees clockwise.
+///
+/// (at this time I am not so smart that I could do this so I "borrowed" it from:
+/// [qiwei9743 on Leetcode](https://leetcode.com/problems/rotate-image/solutions/435653/rust-with-std::mem::swap-in-2D-vector))
+fn rotate_field_90deg(field: &mut Field) -> &mut Field {
+    field.0.reverse();
+    for i in 1..field.0.len() {
+        let (left, right) = field.0.split_at_mut(i);
+        for (j, left_item) in left.iter_mut().enumerate().take(i) {
+            std::mem::swap(&mut left_item[i], &mut right[0][j]);
+        }
+    }
+   
+    field
+}
+
+/// Draws the text at the end of the game, when the game ends in a tie, win or lose.
+fn draw_end_text<'a>(text: impl Into<&'a str>, font: &'a Font, texture_creator: &'a TextureCreator<WindowContext>, canvas: &mut WindowCanvas) -> Result<()> {
     let window_size = canvas.window().size();
 
-    let text = match game_result {
-        GameResult::Win(sign) => match sign {
-            Sign::X => "Player X wins!",
-            Sign::O => "Player O wins!",
-        },
-        GameResult::Tie => "It is a tie!",
-    };
-    let texture = get_text_texture(text, font, &texture_creator).context("Creating texture for player Sign.")?;
+    let texture = get_text_texture(text, font, texture_creator).context("Creating texture for player Sign.")?;
 
     let text_width = window_size.0 / 5;
     let text_height = window_size.1 / 8;
@@ -270,7 +318,7 @@ fn on_mouse_clicked(x_pos: i32, y_pos: i32, game_state: &mut GameState) {
     }
 }
 
-/// Switches the `current_player`
+/// Switches the `current_player`.
 fn switch_player(current_player: &mut Sign) {
     *current_player = !*current_player;
 }
