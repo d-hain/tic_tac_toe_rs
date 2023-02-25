@@ -47,7 +47,7 @@ struct Cell(Option<Sign>);
 
 impl Cell {
     /// # Returns 
-    /// 
+    ///
     /// true if the [`Cell`] is [`None`].
     fn is_empty(&self) -> bool {
         self.0.is_none()
@@ -69,9 +69,9 @@ impl Field {
             row_vec
         }).collect::<Vec<Vec<Cell>>>())
     }
-    
+
     /// # Returns
-    /// 
+    ///
     /// the row count of the [`Field`].
     fn row_count(&self) -> usize {
         self.0.len()
@@ -139,6 +139,7 @@ struct GameState<'a> {
     /// The actual [`Rect`]s on screen
     field_rects: Vec<Vec<Rect>>,
     current_player: Sign,
+    has_won: bool,
 }
 
 const BACKGROUND_COLOR: Color = Color::RGB(69, 69, 69);
@@ -161,6 +162,7 @@ fn main() {
         field: Field::empty(FIELD_SIZE),
         field_rects: Vec::new(),
         current_player,
+        has_won: false,
     };
 
     // Game Loop
@@ -171,7 +173,7 @@ fn main() {
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                     break 'running;
                 }
-                Event::MouseButtonDown { y, x, .. } => on_mouse_clicked(x, y, &mut game_state),
+                Event::MouseButtonDown { y, x, .. } if !game_state.has_won => on_mouse_clicked(x, y, &mut game_state),
                 _ => {}
             }
         }
@@ -189,9 +191,11 @@ fn update(canvas: &mut WindowCanvas, game_state: &mut GameState) -> Result<()> {
     field.draw(game_state, canvas).context("Drawing game Field")?;
 
     // Check for win or draw
-    if check_win(&game_state.field, &game_state.current_player) {
+    if check_win(&game_state.field, &!game_state.current_player) {
+        game_state.has_won = true;
+
         let mut text = "Player ".to_owned();
-        text.push_str(game_state.current_player.into());
+        text.push_str((!game_state.current_player).into());
         text.push_str(" has won!");
 
         draw_end_text(&*text, &game_state.font, &texture_creator, canvas)?;
@@ -231,18 +235,18 @@ fn check_win(field: &Field, player: &Sign) -> bool {
     let mut field = field.clone();
 
     // Rows
-    if check_win_row(&field, player) {
+    if check_win_rows(&field, player) {
         return true;
     }
 
+    // Diagonals
+//TODO
+
     // Cols
-    rotate_field_90deg(&mut field);
-    if check_win_row(&field, player) {
+    field = rotate_field_90deg(&field);
+    if check_win_rows(&field, player) {
         return true;
     }
-    
-    // Diagonals
-    
 
     false
 }
@@ -261,13 +265,13 @@ fn check_draw(field: &Field) -> bool {
 }
 
 /// Checks if the `field` contains a row with three of the same [`Sign`]s.
-fn check_win_row(field: &Field, player: &Sign) -> bool {
+fn check_win_rows(field: &Field, player: &Sign) -> bool {
     if field.0
         .windows(FIELD_SIZE)
         .any(|row| row.contains(&vec![Cell(Some(*player)); FIELD_SIZE])) {
         return true;
     }
-    
+
     false
 }
 
@@ -275,7 +279,9 @@ fn check_win_row(field: &Field, player: &Sign) -> bool {
 ///
 /// (at this time I am not so smart that I could do this so I "borrowed" it from:
 /// [qiwei9743 on Leetcode](https://leetcode.com/problems/rotate-image/solutions/435653/rust-with-std::mem::swap-in-2D-vector))
-fn rotate_field_90deg(field: &mut Field) -> &mut Field {
+fn rotate_field_90deg(field: &Field) -> Field {
+    let mut field = field.clone();
+
     field.0.reverse();
     for i in 1..field.0.len() {
         let (left, right) = field.0.split_at_mut(i);
@@ -283,7 +289,7 @@ fn rotate_field_90deg(field: &mut Field) -> &mut Field {
             std::mem::swap(&mut left_item[i], &mut right[0][j]);
         }
     }
-   
+
     field
 }
 
