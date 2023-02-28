@@ -150,18 +150,11 @@ fn main() {
 
     // Setup GameState
     let font = ttf_context.load_font("assets/ComicSansMS3.ttf", 69).expect("Loading font");
-    // Get random starting player
-    let current_player = rand::thread_rng().gen_range(0_u32..=1_u32);
-    let current_player = match current_player {
-        0 => Sign::O,
-        1 => Sign::X,
-        _ => panic!("The rand crate broke or I am stupid.")
-    };
     let mut game_state = GameState {
         font,
         field: Field::empty(FIELD_SIZE),
-        field_rects: Vec::new(),
-        current_player,
+        field_rects: vec![],
+        current_player: get_random_player(),
         has_won: false,
     };
 
@@ -172,6 +165,9 @@ fn main() {
                 Event::Quit { .. } |
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                     break 'running;
+                }
+                Event::KeyDown { keycode: Some(Keycode::R), .. } => {
+                    game_state = reset_game(game_state);
                 }
                 Event::MouseButtonDown { y, x, .. } if !game_state.has_won => on_mouse_clicked(x, y, &mut game_state),
                 _ => {}
@@ -187,6 +183,7 @@ fn update(canvas: &mut WindowCanvas, game_state: &mut GameState) -> Result<()> {
     canvas.clear();
     let field = game_state.field.clone();
     let texture_creator = canvas.texture_creator();
+    let window_size = canvas.window().size();
 
     field.draw(game_state, canvas).context("Drawing game Field")?;
 
@@ -198,9 +195,9 @@ fn update(canvas: &mut WindowCanvas, game_state: &mut GameState) -> Result<()> {
         text.push_str((!game_state.current_player).into());
         text.push_str(" has won!");
 
-        draw_end_text(&*text, &game_state.font, &texture_creator, canvas)?;
+        draw_end_text(&*text, (window_size.0 / 2, window_size.1 / 8), &game_state.font, &texture_creator, canvas)?;
     } else if check_draw(&game_state.field) {
-        draw_end_text("It is a tie!", &game_state.font, &texture_creator, canvas)?;
+        draw_end_text("It is a tie!", (window_size.0 / 4, window_size.1 / 8), &game_state.font, &texture_creator, canvas)?;
     }
 
     canvas.present();
@@ -230,6 +227,17 @@ fn setup_sdl() -> (WindowCanvas, EventPump, Sdl2TtfContext) {
     (canvas, event_pump, ttf_context)
 }
 
+/// Resets the [`GameState`].
+fn reset_game(game_state: GameState) -> GameState {
+    GameState {
+        font: game_state.font,
+        field: Field::empty(FIELD_SIZE),
+        field_rects: vec![],
+        current_player: get_random_player(),
+        has_won: false,
+    }
+}
+
 /// Checks if the game has ended in a win for the given `player`.
 fn check_win(field: &Field, player: &Sign) -> bool {
     let mut field = field.clone();
@@ -240,7 +248,16 @@ fn check_win(field: &Field, player: &Sign) -> bool {
     }
 
     // Diagonals
-//TODO
+    if let Some(middle_sign) = field.0[1][1].0 {
+        // Left-Top to Right-Bottom
+        if &middle_sign == player && field.0[0][0] == field.0[1][1] && field.0[1][1] == field.0[2][2] {
+            return true;
+        }
+
+        if &middle_sign == player && field.0[0][2] == field.0[1][1] && field.0[1][1] == field.0[2][0] {
+            return true;
+        }
+    }
 
     // Cols
     field = rotate_field_90deg(&field);
@@ -275,6 +292,18 @@ fn check_win_rows(field: &Field, player: &Sign) -> bool {
     false
 }
 
+/// # Return
+/// 
+/// a random [`Sign`] to use as the player.
+fn get_random_player() -> Sign {
+    let player = rand::thread_rng().gen_range(0_u32..=1_u32);
+    match player {
+        0 => Sign::O,
+        1 => Sign::X,
+        _ => unreachable!()
+    }
+}
+
 /// Rotates the field by 90 degrees clockwise.
 ///
 /// (at this time I am not so smart that I could do this so I "borrowed" it from:
@@ -294,13 +323,19 @@ fn rotate_field_90deg(field: &Field) -> Field {
 }
 
 /// Draws the text at the end of the game, when the game ends in a tie, win or lose.
-fn draw_end_text<'a>(text: impl Into<&'a str>, font: &'a Font, texture_creator: &'a TextureCreator<WindowContext>, canvas: &mut WindowCanvas) -> Result<()> {
+fn draw_end_text<'a>(
+    text: impl Into<&'a str>,
+    text_w_h: (u32, u32),
+    font: &'a Font,
+    texture_creator: &'a TextureCreator<WindowContext>,
+    canvas: &mut WindowCanvas,
+) -> Result<()> {
     let window_size = canvas.window().size();
+    let text_width = text_w_h.0;
+    let text_height = text_w_h.1;
 
     let texture = get_text_texture(text, font, texture_creator).context("Creating texture for player Sign.")?;
 
-    let text_width = window_size.0 / 5;
-    let text_height = window_size.1 / 8;
     let text_x_pos = window_size.0 / 2 - text_width / 2;
     let text_y_pos = window_size.1 / 42;
     let target = Rect::new(text_x_pos as i32, text_y_pos as i32, text_width, text_height);
